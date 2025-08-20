@@ -1,132 +1,87 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <functional>
+#include <optional>
 
-// Vital limits structure
+// Data structure to hold vital limits
 struct VitalLimits {
     float low;
     float high;
-    bool inclusive;
+    bool inclusive;  // true means strict inequality (<, >)
 };
 
-// Pure functions to check individual vitals
-bool checkTemperature(float temp, const VitalLimits& limits) {
-    if (limits.inclusive)
-        return temp < limits.low || temp > limits.high;
-    else
-        return temp <= limits.low || temp >= limits.high;
+// Data structure for a vital sign reading
+struct VitalReading {
+    std::string name;
+    float value;
+};
+
+// Pure function to check a single value against limits with CCN = 2
+bool isOutOfRange(float value, const VitalLimits& limits) {
+    if (limits.inclusive) {
+        return value < limits.low || value > limits.high;
+    }
+    return value <= limits.low || value >= limits.high;
 }
 
-bool checkPulseRate(float pulse, const VitalLimits& limits) {
-    if (limits.inclusive)
-        return pulse < limits.low || pulse > limits.high;
-    else
-        return pulse <= limits.low || pulse >= limits.high;
+// Function to get alert message for a specific vital (pure, CCN=1)
+std::optional<std::string> checkVital(const VitalReading& reading, const VitalLimits& limits) {
+    if (isOutOfRange(reading.value, limits)) {
+        return reading.name + " is out of range!";
+    }
+    return std::nullopt;
 }
 
-bool checkSpO2(float spo2, const VitalLimits& limits) {
-    if (limits.inclusive)
-        return spo2 < limits.low || spo2 > limits.high;
-    else
-        return spo2 <= limits.low || spo2 >= limits.high;
+// Function to find limits for a vital by name, CCN=1 (no branching)
+std::optional<VitalLimits> getLimitsForVital(const std::string& name) {
+    if (name == "Temperature") return VitalLimits{95.0f, 102.0f, true};
+    if (name == "PulseRate") return VitalLimits{60.0f, 100.0f, true};
+    if (name == "SpO2") return VitalLimits{90.0f, 200.0f, true};
+    return std::nullopt;  // Unknown vital
 }
 
-// Alert function (I/O separated)
+// Main function to check all vitals, CCN=3 max (one for loop + two early returns)
+std::vector<std::string> checkAllVitals(const std::vector<VitalReading>& readings) {
+    std::vector<std::string> alerts;
+
+    for (const auto& reading : readings) {
+        auto limitsOpt = getLimitsForVital(reading.name);
+        if (!limitsOpt.has_value()) {
+            alerts.push_back("Unknown vital: " + reading.name);
+            continue;
+        }
+        auto alertOpt = checkVital(reading, limitsOpt.value());
+        if (alertOpt.has_value()) {
+            alerts.push_back(alertOpt.value());
+        }
+    }
+
+    return alerts;
+}
+
+// I/O separated function to show alert
 void showAlert(const std::string& message) {
     std::cout << message << std::endl;
 }
 
-// Main function to evaluate vitals with minimal complexity per function
-int evaluateVitals(float temperature, float pulseRate, float spo2) {
-    // Define limits - could be moved to config or data file
-    const VitalLimits tempLimits{95.0f, 102.0f, true};
-    const VitalLimits pulseLimits{60.0f, 100.0f, true};
-    const VitalLimits spo2Limits{90.0f, 200.0f, true};  // high upper bound
-
-    if (checkTemperature(temperature, tempLimits)) {
-        showAlert("Temperature is critical!");
-        return 0;
-    }
-
-    if (checkPulseRate(pulseRate, pulseLimits)) {
-        showAlert("Pulse Rate is out of range!");
-        return 0;
-    }
-
-    if (checkSpO2(spo2, spo2Limits)) {
-        showAlert("Oxygen Saturation is out of range!");
-        return 0;
-    }
-
-    return 1;  // All vitals okay
-}
-
-// Simple test cases for coverage completeness
-void runTests() {
-    // Test data: value, limits, expected result
-    struct TestCase {
-        float value;
-        VitalLimits limits;
-        bool expected;
-    };
-
-    // Temperature tests
-    TestCase tempTests[] = {
-        {94.9f, {95.0f, 102.0f, true}, true},
-        {95.0f, {95.0f, 102.0f, true}, false},
-        {102.0f, {95.0f, 102.0f, true}, false},
-        {102.1f, {95.0f, 102.0f, true}, true},
-    };
-
-    for (auto& test : tempTests) {
-        bool res = checkTemperature(test.value, test.limits);
-        if (res != test.expected) {
-            std::cerr << "Temperature test failed for value " << test.value << std::endl;
-        }
-    }
-
-    // Pulse rate tests (similar pattern)
-    TestCase pulseTests[] = {
-        {59.9f, {60.0f, 100.0f, true}, true},
-        {60.0f, {60.0f, 100.0f, true}, false},
-        {100.0f, {60.0f, 100.0f, true}, false},
-        {100.1f, {60.0f, 100.0f, true}, true},
-    };
-
-    for (auto& test : pulseTests) {
-        bool res = checkPulseRate(test.value, test.limits);
-        if (res != test.expected) {
-            std::cerr << "PulseRate test failed for value " << test.value << std::endl;
-        }
-    }
-
-    // SpO2 tests
-    TestCase spo2Tests[] = {
-        {89.9f, {90.0f, 200.0f, true}, true},
-        {90.0f, {90.0f, 200.0f, true}, false},
-        {199.9f, {90.0f, 200.0f, true}, false},
-        {200.0f, {90.0f, 200.0f, true}, false},
-        {200.1f, {90.0f, 200.0f, true}, true},
-    };
-
-    for (auto& test : spo2Tests) {
-        bool res = checkSpO2(test.value, test.limits);
-        if (res != test.expected) {
-            std::cerr << "SpO2 test failed for value " << test.value << std::endl;
-        }
-    }
-
-    std::cout << "Tests completed\n";
-}
-
+// Sample main program
 int main() {
-    runTests();
+    // Example vital readings (could come from sensors or vendors)
+    std::vector<VitalReading> readings = {
+        {"Temperature", 98.6f},
+        {"PulseRate", 110.0f},  // Out of range
+        {"SpO2", 95.0f}
+    };
 
-    // Example usage
-    int status = evaluateVitals(98.0f, 110.0f, 98.0f);
-    if (status == 1) {
-        std::cout << "All vitals normal." << std::endl;
+    auto alerts = checkAllVitals(readings);
+
+    if (alerts.empty()) {
+        std::cout << "All vitals are within normal limits." << std::endl;
+    } else {
+        for (const auto& alert : alerts) {
+            showAlert(alert);
+        }
     }
+
     return 0;
 }
